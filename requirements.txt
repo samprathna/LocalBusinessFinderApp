@@ -1,1 +1,6 @@
 streamlit
+pandas
+googlemaps
+geopy
+requests
+beautifulsoup4
