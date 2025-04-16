@@ -12,22 +12,89 @@ def find_emails_from_website(base_url):
     if not base_url:
         return None
 
-    pages_to_try = ['', '/contact', '/about', '/a-propos', '/contacts', 'about_us', 'about-us', 'contact-us']
     found_emails = set()
+    facebook_url = None
+    checked_urls = set()
+    request_count = 0
+    MAX_MAIN_REQUESTS = 5
+    FACEBOOK_REQUESTS = 1
 
-    for path in pages_to_try:
+    # Standard pages to try first
+    pages_to_try = ['', '/contact', '/about', '/a-propos', '/contacts', 'about_us', 'about-us', 'contact-us']
+
+    def scrape_page(url):
+        nonlocal request_count, facebook_url
+        if request_count >= MAX_MAIN_REQUESTS or url in checked_urls:
+            return
+        checked_urls.add(url)
+
         try:
-            url = base_url.rstrip('/') + path
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+            request_count += 1
+            time.sleep(1)  # delay between requests
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 text = soup.get_text()
                 emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
                 for email in emails:
-                    if not email.endswith(('.png', '.jpg', '.jpeg')):
+                    if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        found_emails.add(email)
+
+                # Find Facebook link
+                if not facebook_url:
+                    fb_link = soup.find('a', href=re.compile(r'facebook\.com'))
+                    if fb_link:
+                        raw_href = fb_link.get('href')
+                        facebook_url = (
+                            'https://www.facebook.com' + raw_href if raw_href.startswith('/')
+                            else raw_href
+                        )
+        except:
+            pass
+
+    # 1. Scrape up to 5 from the main site
+    for path in pages_to_try:
+        if request_count >= MAX_MAIN_REQUESTS:
+            break
+        full_url = base_url.rstrip('/') + path
+        scrape_page(full_url)
+
+    # 2. Collect shallow internal links from homepage (only if space left)
+    if request_count < MAX_MAIN_REQUESTS:
+        try:
+            response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+            time.sleep(1)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                internal_links = [
+                    a['href'] for a in soup.find_all('a', href=True)
+                    if (
+                        (a['href'].startswith('/') or base_url in a['href']) and
+                        a['href'].count('/') <= 2
+                    )
+                ]
+                for link in internal_links:
+                    if request_count >= MAX_MAIN_REQUESTS:
+                        break
+                    if link.startswith('/'):
+                        link = base_url.rstrip('/') + link
+                    scrape_page(link)
+        except:
+            pass
+
+    # 3. If still no email, try Facebook
+    if not found_emails and facebook_url:
+        try:
+            response = requests.get(facebook_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+            time.sleep(1)
+            if response.status_code == 200:
+                text = response.text
+                emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+                for email in emails:
+                    if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         found_emails.add(email)
         except:
-            continue
+            pass
 
     return ', '.join(found_emails) if found_emails else None
 
