@@ -7,12 +7,13 @@ import requests
 from bs4 import BeautifulSoup
 import re
 
-# Email extraction function
+# Email extraction function (returns website_email, facebook_email)
 def find_emails_from_website(base_url):
     if not base_url:
-        return None
+        return None, None
 
-    found_emails = set()
+    website_emails = set()
+    facebook_email = None
     facebook_url = None
     checked_urls = set()
     request_count = 0
@@ -37,23 +38,19 @@ def find_emails_from_website(base_url):
                 emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        found_emails.add(email)
+                        website_emails.add(email)
 
-                # Find Facebook link
                 if not facebook_url:
                     for a_tag in soup.find_all('a', href=True):
                         href = a_tag['href']
                         if 'facebook.com' in href:
                             facebook_url = href.strip()
                             break
-
         except:
             pass
 
-    # 1. Always scrape homepage first
     scrape_page(base_url.rstrip('/'))
 
-    # 2. Then scrape other known subpages (up to 4 more)
     for path in pages_to_try:
         if request_count >= MAX_MAIN_REQUESTS:
             break
@@ -62,7 +59,6 @@ def find_emails_from_website(base_url):
         full_url = base_url.rstrip('/') + path
         scrape_page(full_url)
 
-    # 3. Then scrape shallow internal links if room left
     if request_count < MAX_MAIN_REQUESTS:
         try:
             response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
@@ -85,8 +81,7 @@ def find_emails_from_website(base_url):
         except:
             pass
 
-    # 4. Fallback: Try Facebook page if no emails found
-    if not found_emails and facebook_url:
+    if not website_emails and facebook_url:
         try:
             response = requests.get(facebook_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
             time.sleep(1)
@@ -95,19 +90,19 @@ def find_emails_from_website(base_url):
                 emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', fb_text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        found_emails.add(email)
-                if not found_emails:
-                    return "FB hidden"
+                        facebook_email = email
+                        break
+                if not facebook_email:
+                    facebook_email = "FB hidden"
         except:
-            return "FB hidden"
+            facebook_email = "FB hidden"
 
-    return ', '.join(found_emails) if found_emails else None
-
+    return ', '.join(website_emails) if website_emails else None, facebook_email
 
 # Business search function
 def FindLocalBusinesses(radius, keyword, postalcode, api_key):
     gmaps = googlemaps.Client(key=api_key)
-    
+
     geocode_result = gmaps.geocode(postalcode)
     if not geocode_result:
         raise ValueError("Invalid postal code or not found.")
@@ -149,7 +144,8 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
         website = None
         address = None
         phone = None
-        email = None
+        email_website = None
+        email_facebook = None
 
         if place_id:
             try:
@@ -161,15 +157,14 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
                 address = result.get('formatted_address')
                 phone = result.get('formatted_phone_number')
 
-                # Attempt to extract email from the business website
                 if website:
-                    email = find_emails_from_website(website)
+                    email_website, email_facebook = find_emails_from_website(website)
 
             except Exception as e:
                 print(f"Error getting details for {name}: {e}")
 
         business_data.append([
-            name, reviews, rating, distance_km, website, address, phone, email
+            name, reviews, rating, distance_km, website, address, phone, email_website, email_facebook
         ])
         time.sleep(0.1)
 
@@ -183,11 +178,11 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
             "Website",
             "Address",
             "Phone Number",
-            "Email Address"
+            "E-mail (website)",
+            "E-mail (facebook)"
         ]
     )
     return df.reset_index(drop=True)
-
 
 # Streamlit app interface
 def main():
@@ -197,7 +192,6 @@ def main():
     keyword = st.text_input("Enter the business keyword (e.g., plumber, dentist):")
     postalcode = st.text_input("Enter the postal code (e.g., H2E 2M6):")
 
-    # Try to fetch the API key from secrets
     api_key = st.secrets.get("google", {}).get("api_key", None)
 
     if st.button("Find Businesses"):
@@ -208,8 +202,6 @@ def main():
                 df = FindLocalBusinesses(radius, keyword, postalcode, api_key)
                 if not df.empty:
                     st.write("### Found Businesses", df)
-                    
-                    # Option to download the results
                     csv = df.to_csv(index=False)
                     st.download_button(
                         label="Download results as CSV",
