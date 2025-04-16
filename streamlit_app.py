@@ -93,11 +93,12 @@ def find_emails_from_website(base_url):
                         facebook_email = email
                         break
                 if not facebook_email:
-                    facebook_email = "FB hidden"
+                    facebook_email = facebook_url  # ⬅️ Return FB page URL
         except:
-            facebook_email = "FB hidden"
+            facebook_email = facebook_url  # ⬅️ Return FB page URL on error
 
     return ', '.join(website_emails) if website_emails else None, facebook_email
+
 
 # Business search function
 def FindLocalBusinesses(radius, keyword, postalcode, api_key):
