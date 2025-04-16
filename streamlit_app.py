@@ -125,7 +125,6 @@ def main():
     radius = st.number_input("Enter the search radius (in km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Enter the business keyword (e.g., plumber, dentist):")
     postalcode = st.text_input("Enter the postal code (e.g., H2E 2M6):")
-    api_key = st.text_input("Enter your Google API key:")
 
     if st.button("Find Businesses"):
         if not keyword or not postalcode or not api_key:
@@ -133,7 +132,7 @@ def main():
         else:
             try:
                 df = FindLocalBusinesses(radius, keyword, postalcode, api_key)
-
+                api_key = st.secrets["google"]["api_key"]
                 if not df.empty:
                     st.write("### Found Businesses", df)
                     
