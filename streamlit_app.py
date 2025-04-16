@@ -121,18 +121,18 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
 def main():
     st.title("Local Business Finder")
 
-    # Get user input
     radius = st.number_input("Enter the search radius (in km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Enter the business keyword (e.g., plumber, dentist):")
     postalcode = st.text_input("Enter the postal code (e.g., H2E 2M6):")
-    
-    
+
+    # Try to fetch the API key from secrets
+    api_key = st.secrets.get("google", {}).get("api_key", None)
+
     if st.button("Find Businesses"):
         if not keyword or not postalcode or not api_key:
-            st.error("Please fill out all the fields!")
+            st.error("Please fill out all fields and make sure your API key is set in Streamlit secrets!")
         else:
             try:
-                api_key = st.secrets["google"]["api_key"]
                 df = FindLocalBusinesses(radius, keyword, postalcode, api_key)
                 if not df.empty:
                     st.write("### Found Businesses", df)
