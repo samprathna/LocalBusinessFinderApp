@@ -25,15 +25,26 @@ def find_emails_from_website(base_url):
     facebook_url = None
     headers = {'User-Agent': random.choice(USER_AGENTS)}
 
-    pages_to_try = [
-        '',
-        '/contact', '/contact-us', '/contacts', '/contact_us', '/contactez-nous',
+    def generate_pages_to_try():
+    base_paths = [
+        '', '/contact', '/contact-us', '/contacts', '/contact_us', '/contactez-nous',
         '/soumission', '/devis', '/quote', '/request-a-quote',
         '/formulaire-contact', '/about', '/about-us', '/a-propos', '/apropos',
         '/support', '/help', '/aide', '/faq', '/info', '/services',
         '/reservation', '/booking', '/appointment',
         '/pages/contact', '/pages/about', '/pages/support', '/pages/faq'
     ]
+    suffixes = ['', '/', '.php', '.html']
+    all_paths = set()
+    for path in base_paths:
+        if path == '':
+            all_paths.add('/')
+        else:
+            for suffix in suffixes:
+                all_paths.add(path.rstrip('/') + suffix)
+    return sorted(all_paths)
+
+    pages_to_try = generate_pages_to_try()
 
     email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
 
