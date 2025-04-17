@@ -8,9 +8,15 @@ from bs4 import BeautifulSoup
 import re
 
 # Email extraction function (returns website_email, facebook_email)
+import requests
+from bs4 import BeautifulSoup
+import re
+import time
+import random
+
 def find_emails_from_website(base_url):
     if not base_url:
-        return None, None
+        return None, None, None, False
 
     website_emails = set()
     facebook_email = None
@@ -18,6 +24,7 @@ def find_emails_from_website(base_url):
     checked_urls = set()
     request_count = 0
     MAX_MAIN_REQUESTS = 5
+    request_denied = False
 
     keyword_scores = {
         'contact': 10, 'joindre': 10, 'soumission': 9, 'quote': 9,
@@ -41,7 +48,7 @@ def find_emails_from_website(base_url):
         time.sleep(random.uniform(0.6, 1.4))
 
     def scrape_page(url):
-        nonlocal request_count, facebook_url
+        nonlocal request_count, facebook_url, request_denied
         if request_count >= MAX_MAIN_REQUESTS or url in checked_urls:
             return
         checked_urls.add(url)
@@ -62,10 +69,12 @@ def find_emails_from_website(base_url):
                         if 'facebook.com' in href:
                             facebook_url = href.strip()
                             break
+            elif response.status_code in [403, 429]:
+                request_denied = True
         except:
-            pass
+            request_denied = True
 
-    # 1. Scrape homepage first
+    # 1. Scrape homepage
     scrape_page(base_url.rstrip('/'))
 
     # 2. Score and scrape keyword-relevant links from homepage
@@ -91,9 +100,9 @@ def find_emails_from_website(base_url):
                     break
                 scrape_page(url)
     except:
-        pass
+        request_denied = True
 
-    # 3. Scrape all hardcoded paths (does NOT count toward request limit)
+    # 3. Scrape hardcoded paths (does NOT count toward request limit)
     for path in hardcoded_paths:
         url = base_url.rstrip('/') + path
         if url not in checked_urls:
@@ -107,30 +116,12 @@ def find_emails_from_website(base_url):
                     for email in emails:
                         if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                             website_emails.add(email)
+                elif response.status_code in [403, 429]:
+                    request_denied = True
             except:
-                pass
+                request_denied = True
 
-    # 4. Scrape shallow internal links
-    if request_count < MAX_MAIN_REQUESTS:
-        try:
-            response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            random_delay()
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                internal_links = [
-                    a['href'] for a in soup.find_all('a', href=True)
-                    if ((a['href'].startswith('/') or base_url in a['href']) and a['href'].count('/') <= 2)
-                ]
-                for link in internal_links:
-                    if request_count >= MAX_MAIN_REQUESTS:
-                        break
-                    if link.startswith('/'):
-                        link = base_url.rstrip('/') + link
-                    scrape_page(link)
-        except:
-            pass
-
-    # 5. Fallback to Facebook
+    # 4. Fallback to Facebook
     if not website_emails and facebook_url:
         try:
             response = requests.get(facebook_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
@@ -144,10 +135,13 @@ def find_emails_from_website(base_url):
                         break
                 if not facebook_email:
                     facebook_email = facebook_url
+            elif response.status_code in [403, 429]:
+                request_denied = True
         except:
-            facebook_email = facebook_url
+            request_denied = True
 
-    return ', '.join(website_emails) if website_emails else None, facebook_email
+    return ', '.join(website_emails) if website_emails else None, facebook_email, facebook_url, request_denied
+
 
 
 
