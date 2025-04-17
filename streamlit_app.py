@@ -143,7 +143,12 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     return df.reset_index(drop=True)
 
 def main():
-    st.set_page_config(page_title="TRW - Local Business Finder", page_icon="favicon.jpg")
+    st.set_page_config(
+    page_title="TRW - Local Business Finder",
+    page_icon="favicon.jpg",
+    layout="wide"  # ✅ This enables full width layout
+    )
+    
     st.markdown("""
         <h1 style="display: flex; align-items: center;">
             <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="45" style="margin-right: 10px;">
