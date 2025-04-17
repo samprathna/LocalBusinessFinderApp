@@ -2,17 +2,13 @@ import streamlit as st
 import pandas as pd
 import googlemaps
 import time
+import random
 from geopy.distance import geodesic
 import requests
 from bs4 import BeautifulSoup
 import re
 
-# Email extraction function (returns website_email, facebook_email)
-import requests
-from bs4 import BeautifulSoup
-import re
-import time
-import random
+# Email extraction function
 
 def find_emails_from_website(base_url):
     if not base_url:
@@ -74,10 +70,8 @@ def find_emails_from_website(base_url):
         except:
             request_denied = True
 
-    # 1. Scrape homepage
     scrape_page(base_url.rstrip('/'))
 
-    # 2. Score and scrape keyword-relevant links from homepage
     try:
         response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
         random_delay()
@@ -102,7 +96,6 @@ def find_emails_from_website(base_url):
     except:
         request_denied = True
 
-    # 3. Scrape hardcoded paths (does NOT count toward request limit)
     for path in hardcoded_paths:
         url = base_url.rstrip('/') + path
         if url not in checked_urls:
@@ -121,7 +114,6 @@ def find_emails_from_website(base_url):
             except:
                 request_denied = True
 
-    # 4. Fallback to Facebook
     if not website_emails and facebook_url:
         try:
             response = requests.get(facebook_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
@@ -141,9 +133,6 @@ def find_emails_from_website(base_url):
             request_denied = True
 
     return ', '.join(website_emails) if website_emails else None, facebook_email, facebook_url, request_denied
-
-
-
 
 # Business search function
 def FindLocalBusinesses(radius, keyword, postalcode, api_key):
@@ -192,6 +181,8 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
         phone = None
         email_website = None
         email_facebook = None
+        fb_link = None
+        denied = False
 
         if place_id:
             try:
@@ -204,28 +195,23 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
                 phone = result.get('formatted_phone_number')
 
                 if website:
-                    email_website, email_facebook = find_emails_from_website(website)
+                    email_website, email_facebook, fb_link, denied = find_emails_from_website(website)
 
             except Exception as e:
                 print(f"Error getting details for {name}: {e}")
 
         business_data.append([
-            name, reviews, rating, distance_km, website, address, phone, email_website, email_facebook
+            name, reviews, rating, distance_km, website, address, phone,
+            email_website, email_facebook, fb_link, "Yes" if denied else ""
         ])
         time.sleep(0.1)
 
     df = pd.DataFrame(
         business_data,
         columns=[
-            "Business Name",
-            "Number of Reviews",
-            "Star Rating",
-            "Distance (km)",
-            "Website",
-            "Address",
-            "Phone Number",
-            "E-mail (website)",
-            "E-mail (facebook)"
+            "Business Name", "Number of Reviews", "Star Rating", "Distance (km)",
+            "Website", "Address", "Phone Number", "E-mail (website)", "E-mail (facebook)",
+            "Facebook", "Failed - Request Denied"
         ]
     )
     return df.reset_index(drop=True)
