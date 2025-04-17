@@ -10,27 +10,27 @@ from geopy.distance import geodesic
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ----------------------------
-# Generate prioritized page list
+# Smart page list generator
 # ----------------------------
 def generate_pages_to_try():
     priority_base_paths = [
         '/contact', '/contact-us', '/contact_us', '/contacts', '/contactus',
-        '/about', '/about-us', '/about_us', '/aboutus',
-        '/contactez-nous', '/a-propos', '/apropos'
+        '/contactez-nous'
+        '/about', '/about-us', '/about_us',
+        '/a-propos', '/a-propos-de', '/a_propos'
     ]
+
     full_paths = []
 
-    # No suffix
-    full_paths.extend(priority_base_paths)
-    # Slash suffix
-    full_paths.extend([p + '/' for p in priority_base_paths])
-    # /pages prefix
-    full_paths.extend(['/pages' + p for p in priority_base_paths])
+    for base in priority_base_paths:
+        full_paths.append(base.rstrip('/'))                         # No suffix
+        full_paths.append(base.rstrip('/') + '/')                   # With slash
+        full_paths.append('/pages' + base.rstrip('/'))              # /pages prefix
 
-    return full_paths
+    return list(dict.fromkeys(full_paths))  # Remove duplicates, preserve order
 
 # ----------------------------
-# Scrape email, Facebook, Instagram
+# Email + Social Media scraper
 # ----------------------------
 def find_emails_from_website(base_url):
     if not base_url:
@@ -40,11 +40,12 @@ def find_emails_from_website(base_url):
     facebook_url = None
     instagram_url = None
     pages_to_try = generate_pages_to_try()
-    headers = {'User-Agent': random.choice([
+    user_agent = random.choice([
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
         "Mozilla/5.0 (X11; Linux x86_64)"
-    ])}
+    ])
+    headers = {'User-Agent': user_agent}
     email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
 
     def scrape_page(url):
@@ -55,54 +56,64 @@ def find_emails_from_website(base_url):
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                for mailto_link in soup.select('a[href^=mailto]'):
-                    email = mailto_link.get('href').replace('mailto:', '').strip()
+                # From mailto:
+                for link in soup.select('a[href^=mailto]'):
+                    email = link['href'].replace('mailto:', '').strip()
                     if email:
                         found_emails.add(email)
 
+                # From visible text
                 text = soup.get_text()
                 emails = re.findall(email_pattern, text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         found_emails.add(email)
 
+                # Social links
                 if not facebook_url:
-                    fb_tag = soup.find('a', href=re.compile(r'facebook\.com'))
-                    if fb_tag:
-                        href = fb_tag['href']
+                    fb = soup.find('a', href=re.compile(r'facebook\.com'))
+                    if fb:
+                        href = fb.get('href')
                         facebook_url = 'https://www.facebook.com' + href if href.startswith('/') else href
 
                 if not instagram_url:
-                    ig_tag = soup.find('a', href=re.compile(r'instagram\.com'))
-                    if ig_tag:
-                        href = ig_tag['href']
+                    insta = soup.find('a', href=re.compile(r'instagram\.com'))
+                    if insta:
+                        href = insta.get('href')
                         instagram_url = 'https://www.instagram.com' + href if href.startswith('/') else href
         except:
             pass
 
-    scrape_page(base_url.rstrip('/'))
+    # Scrape homepage first
+    scrape_page(base_url)
 
     if not found_emails:
         for path in pages_to_try:
-            scrape_page(base_url.rstrip('/') + path)
+            full_url = base_url.rstrip('/') + path
+            scrape_page(full_url)
             if found_emails:
                 break
 
-    return ', '.join(found_emails) if found_emails else None, facebook_url, instagram_url
+    return (
+        ', '.join(found_emails) if found_emails else None,
+        facebook_url,
+        instagram_url
+    )
 
 # ----------------------------
-# Process single business
+# Process one business
 # ----------------------------
 def process_business(place, center_latlng, gmaps):
     name = place.get('name')
     reviews = place.get('user_ratings_total', 0)
-    rating = place.get('rating')
+    rating = place.get('rating', None)
     lat = place['geometry']['location']['lat']
     lng = place['geometry']['location']['lng']
     distance_km = round(geodesic(center_latlng, (lat, lng)).km, 2)
 
     place_id = place.get('place_id')
-    website = address = phone = email = facebook = instagram = None
+    website = address = phone = None
+    email = facebook = instagram = None
 
     if place_id:
         try:
@@ -113,6 +124,7 @@ def process_business(place, center_latlng, gmaps):
             website = result.get('website')
             address = result.get('formatted_address')
             phone = result.get('formatted_phone_number')
+
             if website:
                 email, facebook, instagram = find_emails_from_website(website)
         except Exception as e:
@@ -121,45 +133,62 @@ def process_business(place, center_latlng, gmaps):
     return [name, reviews, rating, distance_km, website, address, phone, email, facebook, instagram]
 
 # ----------------------------
-# Business scraping logic
+# Business search
 # ----------------------------
 def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=None):
     gmaps = googlemaps.Client(key=api_key)
     geocode_result = gmaps.geocode(postalcode)
+
     if not geocode_result:
-        raise ValueError("Invalid postal code")
+        raise ValueError("Invalid postal code or not found.")
 
     location = geocode_result[0]['geometry']['location']
     center_latlng = (location['lat'], location['lng'])
 
     all_results = []
     next_page_token = None
+
     while True:
-        places = gmaps.places_nearby(location=center_latlng, radius=radius*1000, keyword=keyword, page_token=next_page_token)
-        all_results.extend(places['results'])
-        next_page_token = places.get('next_page_token')
-        if not next_page_token:
+        places_result = gmaps.places_nearby(
+            location=center_latlng,
+            radius=radius * 1000,
+            keyword=keyword,
+            page_token=next_page_token
+        )
+        all_results.extend(places_result['results'])
+        next_page_token = places_result.get('next_page_token')
+        if next_page_token:
+            time.sleep(2)
+        else:
             break
-        time.sleep(2)
 
-    data = []
+    business_data = []
     total = len(all_results)
-    with ThreadPoolExecutor(max_workers=7) as executor:
-        futures = [executor.submit(process_business, p, center_latlng, gmaps) for p in all_results]
-        for i, future in enumerate(as_completed(futures), 1):
-            data.append(future.result())
-            if progress_callback:
-                progress_callback(i / total)
+    completed = 0
 
-    df = pd.DataFrame(data, columns=[
-        "Business Name", "Number of Reviews", "Star Rating", "Distance (km)",
-        "Website", "Address", "Phone Number", "Email Address",
-        "Facebook Page", "Instagram Page"
-    ])
+    with ThreadPoolExecutor(max_workers=7) as executor:
+        futures = [
+            executor.submit(process_business, place, center_latlng, gmaps)
+            for place in all_results
+        ]
+        for future in as_completed(futures):
+            business_data.append(future.result())
+            completed += 1
+            if progress_callback:
+                progress_callback(completed / total)
+
+    df = pd.DataFrame(
+        business_data,
+        columns=[
+            "Business Name", "Number of Reviews", "Star Rating", "Distance (km)",
+            "Website", "Address", "Phone Number", "Email Address",
+            "Facebook Page", "Instagram Page"
+        ]
+    )
     return df.reset_index(drop=True)
 
 # ----------------------------
-# Streamlit UI
+# Streamlit App Interface
 # ----------------------------
 def main():
     st.set_page_config(page_title="TRW - Local Business Finder", page_icon="favicon.jpg", layout="wide")
@@ -185,37 +214,31 @@ def main():
             </style>
             <canvas id="matrix-canvas"></canvas>
             <script>
-            const canvas = document.getElementById("matrix-canvas");
-            const ctx = canvas.getContext("2d");
-    
-            function resizeCanvas() {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-            }
-            window.addEventListener('resize', resizeCanvas);
-            resizeCanvas();
-    
-            const letters = "アァイィウエオカキクケコサシスセソ0123456789".split("");
-            const fontSize = 14;
-            const columns = Math.floor(canvas.width / fontSize);
-            const drops = Array(columns).fill(1);
-    
-            function drawMatrix() {
-                ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-                ctx.fillStyle = "#0F0";
-                ctx.font = fontSize + "px monospace";
-    
-                for (let i = 0; i < drops.length; i++) {
-                    const text = letters[Math.floor(Math.random() * letters.length)];
-                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
-                    drops[i]++;
+                const canvas = document.getElementById("matrix-canvas");
+                const ctx = canvas.getContext("2d");
+                function resizeCanvas() {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
                 }
-            }
-    
-            setInterval(drawMatrix, 50);
+                window.addEventListener('resize', resizeCanvas);
+                resizeCanvas();
+                const letters = "アァイィウエオカキクケコサシスセソ0123456789".split("");
+                const fontSize = 14;
+                const columns = Math.floor(canvas.width / fontSize);
+                const drops = Array(columns).fill(1);
+                function drawMatrix() {
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = "#0F0";
+                    ctx.font = fontSize + "px monospace";
+                    for (let i = 0; i < drops.length; i++) {
+                        const text = letters[Math.floor(Math.random() * letters.length)];
+                        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                        drops[i]++;
+                    }
+                }
+                setInterval(drawMatrix, 50);
             </script>
         """, unsafe_allow_html=True)
 
@@ -241,6 +264,7 @@ def main():
                     radius, keyword, postalcode, api_key,
                     progress_callback=lambda p: progress_bar.progress(min(p, 1.0))
                 )
+
                 if not df.empty:
                     st.success("✅ Businesses found!")
                     st.write("### Results")
@@ -257,5 +281,8 @@ def main():
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
+# ----------------------------
+# Run app
+# ----------------------------
 if __name__ == "__main__":
     main()
