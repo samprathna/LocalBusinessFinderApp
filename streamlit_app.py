@@ -199,8 +199,17 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
 # Streamlit UI
 # ----------------------------
 def main():
-    st.set_page_config(page_title="TRW - Local Business Finder", page_icon="favicon.jpg", layout="centered")
-    st.title("📍 TRW - Local Business Finder")
+    
+    # Set page title
+    st.set_page_config(page_title="TRW - Local Business Finder", page_icon=":house:")
+    
+    # Use Markdown to combine the image with the title
+    st.markdown("""
+        <h1 style="display: flex; align-items: center;">
+            <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="30" style="margin-right: 10px;">
+            TRW - Local Business Finder
+        </h1>
+    """, unsafe_allow_html=True)
 
     radius = st.number_input("Search radius (km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Business keyword (e.g., plumber, dentist):")
