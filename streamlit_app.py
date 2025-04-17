@@ -160,7 +160,7 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     total = len(all_results)
     completed = 0
 
-    with ThreadPoolExecutor(max_workers=7) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [
             executor.submit(process_business, place, center_latlng, gmaps)
             for place in all_results
@@ -196,4 +196,25 @@ def main():
         else:
             try:
                 progress_bar = st.progress(0)
-                df = FindLocalBusinesses
+                df = FindLocalBusinesses(
+                    radius, keyword, postalcode, api_key,
+                    progress_callback=lambda p: progress_bar.progress(min(p, 1.0))
+                )
+
+                if not df.empty:
+                    st.success("✅ Done! Businesses found.")
+                    st.write("### Found Businesses", df)
+                    csv = df.to_csv(index=False)
+                    st.download_button(
+                        label="Download results as CSV",
+                        data=csv,
+                        file_name=f"businesses_{keyword}_{radius}km_{postalcode}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.warning("No businesses found.")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
+if __name__ == "__main__":
+    main()
