@@ -30,7 +30,8 @@ def find_emails_from_website(base_url):
     '/soumission', '/quote', '/request-a-quote', '/demande',
     
     # /pages variations
-    
+    '/pages/contact',
+    '/pages/contacts',
     '/pages/contact-us',
     '/pages/nous-joindre',
     '/pages/about',
