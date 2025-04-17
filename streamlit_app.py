@@ -19,19 +19,36 @@ def find_emails_from_website(base_url):
     request_count = 0
     MAX_MAIN_REQUESTS = 5
 
-    pages_to_try = ['', '/contact', '/about', '/a-propos', '/contacts', 'about_us', 'about-us', 'contact-us']
+    keyword_scores = {
+        'contact': 10, 'joindre': 10, 'soumission': 9, 'quote': 9,
+        'devis': 8, 'about': 8, 'propos': 8, 'form': 7, 'support': 7,
+        'team': 6, 'equipe': 6, 'info': 6, 'services': 5,
+        'reservation': 5, 'booking': 5, 'faq': 4, 'aide': 4
+    }
+
+    hardcoded_paths = [
+        '/contact', '/contact.php', '/contact.html',
+        '/contact-us', '/contact-us.php', '/contact-us.html',
+        '/about', '/about.php', '/about.html',
+        '/about-us', '/about-us.php', '/about-us.html',
+        '/a-propos', '/a-propos.php', '/a-propos.html',
+        '/apropos', '/apropos.php', '/apropos.html',
+        '/nous-joindre', '/nous-joindre.php', '/nous-joindre.html',
+        '/soumission', '/soumission.php', '/soumission.html'
+    ]
+
+    def random_delay():
+        time.sleep(random.uniform(0.6, 1.4))
 
     def scrape_page(url):
         nonlocal request_count, facebook_url
         if request_count >= MAX_MAIN_REQUESTS or url in checked_urls:
             return
         checked_urls.add(url)
-
         try:
             response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
             request_count += 1
-            time.sleep(1)
-
+            random_delay()
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 text = soup.get_text()
@@ -39,7 +56,6 @@ def find_emails_from_website(base_url):
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         website_emails.add(email)
-
                 if not facebook_url:
                     for a_tag in soup.find_all('a', href=True):
                         href = a_tag['href']
@@ -49,28 +65,61 @@ def find_emails_from_website(base_url):
         except:
             pass
 
+    # 1. Scrape homepage first
     scrape_page(base_url.rstrip('/'))
 
-    for path in pages_to_try:
-        if request_count >= MAX_MAIN_REQUESTS:
-            break
-        if path == '':
-            continue
-        full_url = base_url.rstrip('/') + path
-        scrape_page(full_url)
+    # 2. Score and scrape keyword-relevant links from homepage
+    try:
+        response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+        random_delay()
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            nav_links = []
+            for a in soup.find_all('a', href=True):
+                href = a['href'].lower()
+                score = sum(s for k, s in keyword_scores.items() if k in href)
+                if score > 0:
+                    if href.startswith('/'):
+                        full_url = base_url.rstrip('/') + href
+                    elif href.startswith('http'):
+                        full_url = href
+                    else:
+                        full_url = base_url.rstrip('/') + '/' + href
+                    nav_links.append((score, full_url))
+            for _, url in sorted(nav_links, reverse=True):
+                if request_count >= MAX_MAIN_REQUESTS:
+                    break
+                scrape_page(url)
+    except:
+        pass
 
+    # 3. Scrape all hardcoded paths (does NOT count toward request limit)
+    for path in hardcoded_paths:
+        url = base_url.rstrip('/') + path
+        if url not in checked_urls:
+            try:
+                response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                random_delay()
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    text = soup.get_text()
+                    emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+                    for email in emails:
+                        if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
+                            website_emails.add(email)
+            except:
+                pass
+
+    # 4. Scrape shallow internal links
     if request_count < MAX_MAIN_REQUESTS:
         try:
             response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            time.sleep(1)
+            random_delay()
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 internal_links = [
                     a['href'] for a in soup.find_all('a', href=True)
-                    if (
-                        (a['href'].startswith('/') or base_url in a['href']) and
-                        a['href'].count('/') <= 2
-                    )
+                    if ((a['href'].startswith('/') or base_url in a['href']) and a['href'].count('/') <= 2)
                 ]
                 for link in internal_links:
                     if request_count >= MAX_MAIN_REQUESTS:
@@ -81,10 +130,11 @@ def find_emails_from_website(base_url):
         except:
             pass
 
+    # 5. Fallback to Facebook
     if not website_emails and facebook_url:
         try:
             response = requests.get(facebook_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            time.sleep(1)
+            random_delay()
             if response.status_code == 200:
                 fb_text = response.text
                 emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', fb_text)
@@ -93,11 +143,12 @@ def find_emails_from_website(base_url):
                         facebook_email = email
                         break
                 if not facebook_email:
-                    facebook_email = facebook_url  # ⬅️ Return FB page URL
+                    facebook_email = facebook_url
         except:
-            facebook_email = facebook_url  # ⬅️ Return FB page URL on error
+            facebook_email = facebook_url
 
     return ', '.join(website_emails) if website_emails else None, facebook_email
+
 
 
 # Business search function
