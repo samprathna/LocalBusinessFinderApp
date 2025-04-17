@@ -16,7 +16,7 @@ import streamlit.components.v1 as components
 def generate_pages_to_try():
     priority_base_paths = [
         '/contact', '/contact-us', '/contact_us', '/contacts', '/contactus',
-        '/contactez-nous'
+        '/contactez-nous',
         '/about', '/about-us', '/about_us',
         '/a-propos', '/a-propos-de', '/a_propos'
     ]
