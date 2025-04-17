@@ -171,53 +171,53 @@ def main():
         st.session_state.matrix_mode = not st.session_state.matrix_mode
 
     if st.session_state.matrix_mode:
-    st.markdown("""
-        <style>
-            #matrix-canvas {
-                position: fixed;
-                top: 0;
-                left: 0;
-                z-index: -1;
-                width: 100vw;
-                height: 100vh;
-                background: black;
+        st.markdown("""
+            <style>
+                #matrix-canvas {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    z-index: -1;
+                    width: 100vw;
+                    height: 100vh;
+                    background: black;
+                }
+            </style>
+            <canvas id="matrix-canvas"></canvas>
+            <script>
+            const canvas = document.getElementById("matrix-canvas");
+            const ctx = canvas.getContext("2d");
+    
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
             }
-        </style>
-        <canvas id="matrix-canvas"></canvas>
-        <script>
-        const canvas = document.getElementById("matrix-canvas");
-        const ctx = canvas.getContext("2d");
-
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        const letters = "アァイィウエオカキクケコサシスセソ0123456789".split("");
-        const fontSize = 14;
-        const columns = Math.floor(canvas.width / fontSize);
-        const drops = Array(columns).fill(1);
-
-        function drawMatrix() {
-            ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.fillStyle = "#0F0";
-            ctx.font = fontSize + "px monospace";
-
-            for (let i = 0; i < drops.length; i++) {
-                const text = letters[Math.floor(Math.random() * letters.length)];
-                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
-                drops[i]++;
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+    
+            const letters = "アァイィウエオカキクケコサシスセソ0123456789".split("");
+            const fontSize = 14;
+            const columns = Math.floor(canvas.width / fontSize);
+            const drops = Array(columns).fill(1);
+    
+            function drawMatrix() {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+                ctx.fillStyle = "#0F0";
+                ctx.font = fontSize + "px monospace";
+    
+                for (let i = 0; i < drops.length; i++) {
+                    const text = letters[Math.floor(Math.random() * letters.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                    drops[i]++;
+                }
             }
-        }
-
-        setInterval(drawMatrix, 50);
-        </script>
-    """, unsafe_allow_html=True)
+    
+            setInterval(drawMatrix, 50);
+            </script>
+        """, unsafe_allow_html=True)
 
     st.markdown("""
         <h1 style="display: flex; align-items: center;">
