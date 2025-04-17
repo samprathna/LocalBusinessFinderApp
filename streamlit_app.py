@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import googlemaps
 import time
-import random
 from geopy.distance import geodesic
 import requests
 from bs4 import BeautifulSoup
@@ -12,129 +11,96 @@ import re
 
 def find_emails_from_website(base_url):
     if not base_url:
-        return None, None, None, False
+        return None, None
 
-    website_emails = set()
-    facebook_email = None
+    found_emails = set()
     facebook_url = None
     checked_urls = set()
     request_count = 0
     MAX_MAIN_REQUESTS = 5
-    request_denied = False
+    FACEBOOK_REQUESTS = 1
 
-    keyword_scores = {
-        'contact': 10, 'joindre': 10, 'soumission': 9, 'quote': 9,
-        'devis': 8, 'about': 8, 'propos': 8, 'form': 7, 'support': 7,
-        'team': 6, 'equipe': 6, 'info': 6, 'services': 5,
-        'reservation': 5, 'booking': 5, 'faq': 4, 'aide': 4
-    }
-
-    hardcoded_paths = [
-        '/contact', '/contact.php', '/contact.html',
-        '/contact-us', '/contact-us.php', '/contact-us.html',
-        '/about', '/about.php', '/about.html',
-        '/about-us', '/about-us.php', '/about-us.html',
-        '/a-propos', '/a-propos.php', '/a-propos.html',
-        '/apropos', '/apropos.php', '/apropos.html',
-        '/nous-joindre', '/nous-joindre.php', '/nous-joindre.html',
-        '/soumission', '/soumission.php', '/soumission.html'
-    ]
-
-    def random_delay():
-        time.sleep(random.uniform(0.6, 1.4))
+    # Standard pages to try first
+    pages_to_try = ['', '/contact', '/about', '/a-propos', '/contacts', 'about_us', 'about-us', 'contact-us']
 
     def scrape_page(url):
-        nonlocal request_count, facebook_url, request_denied
+        nonlocal request_count, facebook_url
         if request_count >= MAX_MAIN_REQUESTS or url in checked_urls:
             return
         checked_urls.add(url)
+
         try:
             response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
             request_count += 1
-            random_delay()
+            time.sleep(1)  # delay between requests
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 text = soup.get_text()
                 emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        website_emails.add(email)
+                        found_emails.add(email)
+
+                # Find Facebook link
                 if not facebook_url:
-                    for a_tag in soup.find_all('a', href=True):
-                        href = a_tag['href']
-                        if 'facebook.com' in href:
-                            facebook_url = href.strip()
-                            break
-            elif response.status_code in [403, 429]:
-                request_denied = True
+                    fb_link = soup.find('a', href=re.compile(r'facebook\.com'))
+                    if fb_link:
+                        raw_href = fb_link.get('href')
+                        facebook_url = (
+                            'https://www.facebook.com' + raw_href if raw_href.startswith('/')
+                            else raw_href
+                        )
         except:
-            request_denied = True
+            pass
 
-    scrape_page(base_url.rstrip('/'))
+    # 1. Scrape up to 5 from the main site
+    for path in pages_to_try:
+        if request_count >= MAX_MAIN_REQUESTS:
+            break
+        full_url = base_url.rstrip('/') + path
+        scrape_page(full_url)
 
-    try:
-        response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-        random_delay()
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            nav_links = []
-            for a in soup.find_all('a', href=True):
-                href = a['href'].lower()
-                score = sum(s for k, s in keyword_scores.items() if k in href)
-                if score > 0:
-                    if href.startswith('/'):
-                        full_url = base_url.rstrip('/') + href
-                    elif href.startswith('http'):
-                        full_url = href
-                    else:
-                        full_url = base_url.rstrip('/') + '/' + href
-                    nav_links.append((score, full_url))
-            for _, url in sorted(nav_links, reverse=True):
-                if request_count >= MAX_MAIN_REQUESTS:
-                    break
-                scrape_page(url)
-    except:
-        request_denied = True
+    # 2. Collect shallow internal links from homepage (only if space left)
+    if request_count < MAX_MAIN_REQUESTS:
+        try:
+            response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+            time.sleep(1)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                internal_links = [
+                    a['href'] for a in soup.find_all('a', href=True)
+                    if (
+                        (a['href'].startswith('/') or base_url in a['href']) and
+                        a['href'].count('/') <= 2
+                    )
+                ]
+                for link in internal_links:
+                    if request_count >= MAX_MAIN_REQUESTS:
+                        break
+                    if link.startswith('/'):
+                        link = base_url.rstrip('/') + link
+                    scrape_page(link)
+        except:
+            pass
 
-    for path in hardcoded_paths:
-        url = base_url.rstrip('/') + path
-        if url not in checked_urls:
-            try:
-                response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-                random_delay()
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    text = soup.get_text()
-                    emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
-                    for email in emails:
-                        if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
-                            website_emails.add(email)
-                elif response.status_code in [403, 429]:
-                    request_denied = True
-            except:
-                request_denied = True
-
-    if not website_emails and facebook_url:
+    # 3. If still no email, try Facebook
+    if not found_emails and facebook_url:
         try:
             response = requests.get(facebook_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            random_delay()
+            time.sleep(1)
             if response.status_code == 200:
-                fb_text = response.text
-                emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', fb_text)
+                text = response.text
+                emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        facebook_email = email
-                        break
-                if not facebook_email:
-                    facebook_email = facebook_url
-            elif response.status_code in [403, 429]:
-                request_denied = True
+                        found_emails.add(email)
         except:
-            request_denied = True
+            pass
 
-    return ', '.join(website_emails) if website_emails else None, facebook_email, facebook_url, request_denied
+    return ', '.join(found_emails) if found_emails else None, facebook_url
 
 # Business search function
+
 def FindLocalBusinesses(radius, keyword, postalcode, api_key):
     gmaps = googlemaps.Client(key=api_key)
 
@@ -179,10 +145,8 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
         website = None
         address = None
         phone = None
-        email_website = None
-        email_facebook = None
-        fb_link = None
-        denied = False
+        email = None
+        facebook = None
 
         if place_id:
             try:
@@ -195,14 +159,13 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
                 phone = result.get('formatted_phone_number')
 
                 if website:
-                    email_website, email_facebook, fb_link, denied = find_emails_from_website(website)
+                    email, facebook = find_emails_from_website(website)
 
             except Exception as e:
                 print(f"Error getting details for {name}: {e}")
 
         business_data.append([
-            name, reviews, rating, distance_km, website, address, phone,
-            email_website, email_facebook, fb_link, "Yes" if denied else ""
+            name, reviews, rating, distance_km, website, address, phone, email, facebook
         ])
         time.sleep(0.1)
 
@@ -210,13 +173,13 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
         business_data,
         columns=[
             "Business Name", "Number of Reviews", "Star Rating", "Distance (km)",
-            "Website", "Address", "Phone Number", "E-mail (website)", "E-mail (facebook)",
-            "Facebook", "Failed - Request Denied"
+            "Website", "Address", "Phone Number", "Email Address", "Facebook Page"
         ]
     )
     return df.reset_index(drop=True)
 
 # Streamlit app interface
+
 def main():
     st.title("Local Business Finder")
 
