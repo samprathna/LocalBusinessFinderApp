@@ -9,36 +9,51 @@ from bs4 import BeautifulSoup
 from geopy.distance import geodesic
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Rotate user agents
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-    "Mozilla/5.0 (X11; Linux x86_64)",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)",
-    "Mozilla/5.0 (iPad; CPU OS 13_2 like Mac OS X)"
-]
-
-# Generate dynamic paths
+# ----------------------------
+# Smart page list generator
+# ----------------------------
 def generate_pages_to_try():
-    base_paths = [
-        '', '/contact', '/contact-us', '/contacts', '/contact_us', '/contactez-nous',
-        '/soumission', '/devis', '/quote', '/request-a-quote',
-        '/formulaire-contact', '/about', '/about-us', '/a-propos', '/apropos',
-        '/support', '/help', '/aide', '/faq', '/info', '/services',
-        '/reservation', '/booking', '/appointment',
-        '/pages/contact', '/pages/about', '/pages/support', '/pages/faq'
+    priority_base_paths = [
+        '/contact', '/contact-us', '/contact_us',
+        '/about', '/about-us', '/about_us',
+        '/a-propos', '/a-propos-de', '/a_propos'
     ]
-    suffixes = ['', '/', '.php', '.html']
-    all_paths = set()
-    for path in base_paths:
-        if path == '':
-            all_paths.add('/')
-        else:
-            for suffix in suffixes:
-                all_paths.add(path.rstrip('/') + suffix)
-    return sorted(all_paths)
 
-# Email & Facebook scraping
+    full_paths = []
+
+    # 1. No suffix, no prefix
+    for base in priority_base_paths:
+        full_paths.append(base.rstrip('/'))
+
+    # 2. '/' suffix
+    for base in priority_base_paths:
+        full_paths.append(base.rstrip('/') + '/')
+
+    # 3. /pages prefix (no suffix)
+    for base in priority_base_paths:
+        full_paths.append('/pages' + base.rstrip('/'))
+
+    # 4. .php suffix
+    for base in priority_base_paths:
+        full_paths.append(base.rstrip('/') + '.php')
+
+    # 5. .html suffix
+    for base in priority_base_paths:
+        full_paths.append(base.rstrip('/') + '.html')
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_paths = []
+    for path in full_paths:
+        if path not in seen:
+            seen.add(path)
+            unique_paths.append(path)
+
+    return unique_paths
+
+# ----------------------------
+# Email + Facebook scraper
+# ----------------------------
 def find_emails_from_website(base_url):
     if not base_url:
         return None, None
@@ -46,7 +61,12 @@ def find_emails_from_website(base_url):
     found_emails = set()
     facebook_url = None
     pages_to_try = generate_pages_to_try()
-    headers = {'User-Agent': random.choice(USER_AGENTS)}
+    user_agent = random.choice([
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "Mozilla/5.0 (X11; Linux x86_64)"
+    ])
+    headers = {'User-Agent': user_agent}
     email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
 
     def scrape_page(url):
@@ -57,28 +77,25 @@ def find_emails_from_website(base_url):
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                # From mailto links
+                # From mailto
                 for mailto_link in soup.select('a[href^=mailto]'):
                     email = mailto_link.get('href').replace('mailto:', '').strip()
                     if email:
                         found_emails.add(email)
 
-                # From plain text
+                # From raw text
                 text = soup.get_text()
                 emails = re.findall(email_pattern, text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         found_emails.add(email)
 
-                # Detect Facebook page
+                # Find Facebook
                 if not facebook_url:
                     fb_link = soup.find('a', href=re.compile(r'facebook\.com'))
                     if fb_link:
-                        raw_href = fb_link.get('href')
-                        facebook_url = (
-                            'https://www.facebook.com' + raw_href if raw_href.startswith('/')
-                            else raw_href
-                        )
+                        href = fb_link.get('href')
+                        facebook_url = 'https://www.facebook.com' + href if href.startswith('/') else href
         except:
             pass
 
@@ -90,7 +107,9 @@ def find_emails_from_website(base_url):
 
     return ', '.join(found_emails) if found_emails else None, facebook_url
 
-# Process a single business
+# ----------------------------
+# Process one business
+# ----------------------------
 def process_business(place, center_latlng, gmaps):
     name = place.get('name')
     reviews = place.get('user_ratings_total', 0)
@@ -98,15 +117,11 @@ def process_business(place, center_latlng, gmaps):
 
     lat = place['geometry']['location']['lat']
     lng = place['geometry']['location']['lng']
-    place_latlng = (lat, lng)
-    distance_km = round(geodesic(center_latlng, place_latlng).km, 2)
+    distance_km = round(geodesic(center_latlng, (lat, lng)).km, 2)
 
     place_id = place.get('place_id')
-    website = None
-    address = None
-    phone = None
-    email = None
-    facebook = None
+    website, address, phone = None, None, None
+    email, facebook = None, None
 
     if place_id:
         try:
@@ -120,19 +135,18 @@ def process_business(place, center_latlng, gmaps):
 
             if website:
                 email, facebook = find_emails_from_website(website)
-
         except Exception as e:
             print(f"Error getting details for {name}: {e}")
 
-    return [
-        name, reviews, rating, distance_km, website, address, phone, email, facebook
-    ]
+    return [name, reviews, rating, distance_km, website, address, phone, email, facebook]
 
-# Run full search
+# ----------------------------
+# Business search
+# ----------------------------
 def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=None):
     gmaps = googlemaps.Client(key=api_key)
-
     geocode_result = gmaps.geocode(postalcode)
+
     if not geocode_result:
         raise ValueError("Invalid postal code or not found.")
 
@@ -181,18 +195,21 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     )
     return df.reset_index(drop=True)
 
+# ----------------------------
 # Streamlit UI
+# ----------------------------
 def main():
-    st.title("📍 Local Business Finder")
+    st.set_page_config(page_title="TRW - Local Business Finder", page_icon="favicon.jpg", layout="centered")
+    st.title("📍 TRW - Local Business Finder")
 
-    radius = st.number_input("Enter the search radius (in km):", min_value=1, max_value=100, value=10)
-    keyword = st.text_input("Enter the business keyword (e.g., plumber, dentist):")
-    postalcode = st.text_input("Enter the postal code or ZIP (e.g., H2E 2M6 or 90210):")
+    radius = st.number_input("Search radius (km):", min_value=1, max_value=100, value=10)
+    keyword = st.text_input("Business keyword (e.g., plumber, dentist):")
+    postalcode = st.text_input("Postal/ZIP code (e.g., H2E 2M6 or 90210):")
     api_key = st.secrets.get("google", {}).get("api_key", None)
 
     if st.button("Find Businesses"):
         if not keyword or not postalcode or not api_key:
-            st.error("Please fill out all fields and make sure your API key is set in Streamlit secrets!")
+            st.error("Please fill out all fields and ensure your API key is set in Streamlit secrets.")
         else:
             try:
                 progress_bar = st.progress(0)
@@ -202,11 +219,11 @@ def main():
                 )
 
                 if not df.empty:
-                    st.success("✅ Done! Businesses found.")
-                    st.write("### Found Businesses", df)
+                    st.success("✅ Businesses found!")
+                    st.write("### Results", df)
                     csv = df.to_csv(index=False)
                     st.download_button(
-                        label="Download results as CSV",
+                        label="Download CSV",
                         data=csv,
                         file_name=f"businesses_{keyword}_{radius}km_{postalcode}.csv",
                         mime="text/csv"
@@ -216,5 +233,8 @@ def main():
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
+# ----------------------------
+# Run app
+# ----------------------------
 if __name__ == "__main__":
     main()
