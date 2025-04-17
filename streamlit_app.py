@@ -143,77 +143,81 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     return df.reset_index(drop=True)
 
 def main():
+    # Set page config with wide layout
     st.set_page_config(
         page_title="TRW - Local Business Finder",
         page_icon="favicon.jpg",
-        layout="wide"  # ✅ This enables full width layout
+        layout="wide"
     )
-    st.markdown("""
-        <style>
-        /* MATRIX BACKGROUND */
-        body {
-            background-color: black !important;
-            color: #00ff00 !important;
-        }
-        #MainMenu, header, footer {visibility: hidden;}
-    
-        .matrix-bg {
-            z-index: -1;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: black;
-            overflow: hidden;
-        }
-    
-        canvas#matrixCanvas {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-        }
-        </style>
-    
-        <div class="matrix-bg">
-            <canvas id="matrixCanvas"></canvas>
-        </div>
-    
-        <script>
-        const canvas = document.getElementById('matrixCanvas');
-        const ctx = canvas.getContext('2d');
-    
-        canvas.height = window.innerHeight;
-        canvas.width = window.innerWidth;
-    
-        const letters = "アァイィウヴエカキクケコサシスセソタチツテトナニヌネノ0123456789";
-        const fontSize = 14;
-        const columns = canvas.width / fontSize;
-        const drops = Array(Math.floor(columns)).fill(1);
-    
-        function draw() {
-            ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-            ctx.fillStyle = "#0F0";
-            ctx.font = fontSize + "px monospace";
-    
-            for(let i = 0; i < drops.length; i++) {
-                const text = letters[Math.floor(Math.random() * letters.length)];
-                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-    
-                if(drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-                    drops[i] = 0;
-                }
-                drops[i]++;
+
+    # Initialize Matrix mode state
+    if "matrix_mode" not in st.session_state:
+        st.session_state.matrix_mode = True
+
+    # Toggle Matrix animation
+    if st.button("🧠 Escape the Matrix" if st.session_state.matrix_mode else "🔌 Enter the Matrix"):
+        st.session_state.matrix_mode = not st.session_state.matrix_mode
+
+    # Apply Matrix background if enabled
+    if st.session_state.matrix_mode:
+        st.markdown("""
+            <style>
+            body {
+                background-color: black !important;
+                color: #00ff00 !important;
             }
-        }
-    
-        setInterval(draw, 33);
-        </script>
-    """, unsafe_allow_html=True
-    )
+            #MainMenu, header, footer {visibility: hidden;}
+            .matrix-bg {
+                z-index: -1;
+                position: fixed;
+                top: 0; left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: black;
+                overflow: hidden;
+            }
+            canvas#matrixCanvas {
+                position: absolute;
+                top: 0; left: 0;
+                width: 100%;
+                height: 100%;
+                z-index: -1;
+            }
+            </style>
+
+            <div class="matrix-bg">
+                <canvas id="matrixCanvas"></canvas>
+            </div>
+
+            <script>
+            const canvas = document.getElementById('matrixCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.height = window.innerHeight;
+            canvas.width = window.innerWidth;
+            const letters = "アァイィウヴエカキクケコサシスセソタチツテトナニヌネノ0123456789";
+            const fontSize = 14;
+            const columns = canvas.width / fontSize;
+            const drops = Array(Math.floor(columns)).fill(1);
+
+            function draw() {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#0F0";
+                ctx.font = fontSize + "px monospace";
+                for (let i = 0; i < drops.length; i++) {
+                    const text = letters[Math.floor(Math.random() * letters.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            }
+            setInterval(draw, 33);
+            </script>
+        """, unsafe_allow_html=True)
+
+    # App title section
     st.markdown("""
         <h1 style="display: flex; align-items: center;">
             <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="45" style="margin-right: 10px;">
@@ -221,27 +225,40 @@ def main():
         </h1>
     """, unsafe_allow_html=True)
 
+    # Input fields
     radius = st.number_input("Search radius (km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Business keyword (e.g., plumber, dentist):")
     postalcode = st.text_input("Postal/ZIP code (e.g., H2E 2M6 or 90210):")
     api_key = st.secrets.get("google", {}).get("api_key", None)
 
+    # Run search
     if st.button("Find Businesses"):
         if not keyword or not postalcode or not api_key:
             st.error("Please fill out all fields and ensure your API key is set in Streamlit secrets.")
         else:
             try:
-                progress = st.progress(0)
-                df = FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=lambda p: progress.progress(min(p, 1.0)))
+                progress_bar = st.progress(0)
+                df = FindLocalBusinesses(
+                    radius, keyword, postalcode, api_key,
+                    progress_callback=lambda p: progress_bar.progress(min(p, 1.0))
+                )
+
                 if not df.empty:
                     st.success("✅ Businesses found!")
                     st.write("### Results")
                     st.dataframe(df, use_container_width=True)
-                    st.download_button("Download CSV", df.to_csv(index=False), file_name=f"businesses_{keyword}_{radius}km_{postalcode}.csv", mime="text/csv")
+                    csv = df.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name=f"businesses_{keyword}_{radius}km_{postalcode}.csv",
+                        mime="text/csv"
+                    )
                 else:
                     st.warning("No businesses found.")
             except Exception as e:
                 st.error(f"Error: {str(e)}")
+
 
 if __name__ == "__main__":
     main()
