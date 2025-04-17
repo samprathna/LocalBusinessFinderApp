@@ -2,13 +2,16 @@ import streamlit as st
 import pandas as pd
 import googlemaps
 import time
-from geopy.distance import geodesic
 import requests
-from bs4 import BeautifulSoup
 import re
+import random
+from bs4 import BeautifulSoup
+from geopy.distance import geodesic
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# ----------------------------
 # Email extraction function
-
+# ----------------------------
 def find_emails_from_website(base_url):
     if not base_url:
         return None, None
@@ -18,22 +21,21 @@ def find_emails_from_website(base_url):
 
     pages_to_try = [
         '',
-        '/contact', '/contact-us', '/contacts', '/contact_us', '/nous-joindre', '/joindre',
+        '/contact', '/contact-us', '/contacts', '/contact_us', '/contactez-nous',
         '/soumission', '/devis', '/quote', '/request-a-quote',
-        '/formulaire-contact', '/formulaire', '/demande',
-        '/about', '/about-us', '/about_us', '/a-propos', '/apropos', '/qui-sommes-nous',
-        '/support', '/help', '/aide', '/faq', '/info', '/information',
-        '/customer-service', '/service-client', '/services',
-        '/reservation', '/booking', '/book', '/rdv', '/appointment',
-        '/pages/contact', '/pages/contact-us', '/pages/contacts', '/pages/contact_us', '/pages/nous-joindre', '/pages/joindre',
-        '/pages/about', '/pages/about-us', '/pages/faq', '/pages/support'
+        '/formulaire-contact', '/about', '/about-us', '/a-propos', '/apropos',
+        '/support', '/help', '/aide', '/faq', '/info', '/services',
+        '/reservation', '/booking', '/appointment',
+        '/pages/contact', '/pages/about', '/pages/support', '/pages/faq'
     ]
+
+    headers = {'User-Agent': 'Mozilla/5.0'}
 
     def scrape_page(url):
         nonlocal facebook_url
         try:
-            response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            time.sleep(1)
+            response = requests.get(url, timeout=5, headers=headers)
+            time.sleep(random.uniform(0.6, 1.4))
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 text = soup.get_text()
@@ -41,6 +43,7 @@ def find_emails_from_website(base_url):
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         found_emails.add(email)
+
                 if not facebook_url:
                     fb_link = soup.find('a', href=re.compile(r'facebook\.com'))
                     if fb_link:
@@ -55,12 +58,55 @@ def find_emails_from_website(base_url):
     for path in pages_to_try:
         full_url = base_url.rstrip('/') + path
         scrape_page(full_url)
+        if found_emails:
+            break  # ✅ Early stop once an email is found
 
     return ', '.join(found_emails) if found_emails else None, facebook_url
 
-# Business search function
+# ----------------------------
+# Scrape data for one business
+# ----------------------------
+def process_business(place, center_latlng, gmaps):
+    name = place.get('name')
+    reviews = place.get('user_ratings_total', 0)
+    rating = place.get('rating', None)
 
-def FindLocalBusinesses(radius, keyword, postalcode, api_key):
+    lat = place['geometry']['location']['lat']
+    lng = place['geometry']['location']['lng']
+    place_latlng = (lat, lng)
+    distance_km = round(geodesic(center_latlng, place_latlng).km, 2)
+
+    place_id = place.get('place_id')
+    website = None
+    address = None
+    phone = None
+    email = None
+    facebook = None
+
+    if place_id:
+        try:
+            details = gmaps.place(place_id=place_id, fields=[
+                'website', 'formatted_address', 'formatted_phone_number'
+            ])
+            result = details.get('result', {})
+            website = result.get('website')
+            address = result.get('formatted_address')
+            phone = result.get('formatted_phone_number')
+
+            if website:
+                email, facebook = find_emails_from_website(website)
+
+        except Exception as e:
+            print(f"Error getting details for {name}: {e}")
+
+    return [
+        name, reviews, rating, distance_km, website, address, phone, email, facebook
+    ]
+
+# ----------------------------
+# Business Search Function
+# ----------------------------
+def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=None):
     gmaps = googlemaps.Client(key=api_key)
 
     geocode_result = gmaps.geocode(postalcode)
@@ -80,53 +126,28 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
             keyword=keyword,
             page_token=next_page_token
         )
-
         all_results.extend(places_result['results'])
         next_page_token = places_result.get('next_page_token')
-
         if next_page_token:
             time.sleep(2)
         else:
             break
 
     business_data = []
-    for place in all_results:
-        name = place.get('name')
-        reviews = place.get('user_ratings_total', 0)
-        rating = place.get('rating', None)
+    total = len(all_results)
+    completed = 0
 
-        lat = place['geometry']['location']['lat']
-        lng = place['geometry']['location']['lng']
-        place_latlng = (lat, lng)
-        distance_km = round(geodesic(center_latlng, place_latlng).km, 2)
-
-        place_id = place.get('place_id')
-        website = None
-        address = None
-        phone = None
-        email = None
-        facebook = None
-
-        if place_id:
-            try:
-                details = gmaps.place(place_id=place_id, fields=[
-                    'website', 'formatted_address', 'formatted_phone_number'
-                ])
-                result = details.get('result', {})
-                website = result.get('website')
-                address = result.get('formatted_address')
-                phone = result.get('formatted_phone_number')
-
-                if website:
-                    email, facebook = find_emails_from_website(website)
-
-            except Exception as e:
-                print(f"Error getting details for {name}: {e}")
-
-        business_data.append([
-            name, reviews, rating, distance_km, website, address, phone, email, facebook
-        ])
-        time.sleep(0.1)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(process_business, place, center_latlng, gmaps)
+            for place in all_results
+        ]
+        for future in as_completed(futures):
+            result = future.result()
+            business_data.append(result)
+            completed += 1
+            if progress_callback:
+                progress_callback(completed / total)
 
     df = pd.DataFrame(
         business_data,
@@ -137,15 +158,15 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key):
     )
     return df.reset_index(drop=True)
 
-# Streamlit app interface
-
+# ----------------------------
+# Streamlit App Interface
+# ----------------------------
 def main():
     st.title("Local Business Finder")
 
     radius = st.number_input("Enter the search radius (in km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Enter the business keyword (e.g., plumber, dentist):")
     postalcode = st.text_input("Enter the postal code (e.g., H7T 2L8):")
-
     api_key = st.secrets.get("google", {}).get("api_key", None)
 
     if st.button("Find Businesses"):
@@ -153,7 +174,12 @@ def main():
             st.error("Please fill out all fields and make sure your API key is set in Streamlit secrets!")
         else:
             try:
-                df = FindLocalBusinesses(radius, keyword, postalcode, api_key)
+                progress_bar = st.progress(0)
+                df = FindLocalBusinesses(
+                    radius, keyword, postalcode, api_key,
+                    progress_callback=lambda p: progress_bar.progress(min(p, 1.0))
+                )
+
                 if not df.empty:
                     st.write("### Found Businesses", df)
                     csv = df.to_csv(index=False)
@@ -165,8 +191,12 @@ def main():
                     )
                 else:
                     st.write("No businesses found.")
+
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
+# ----------------------------
+# Run App
+# ----------------------------
 if __name__ == "__main__":
     main()
