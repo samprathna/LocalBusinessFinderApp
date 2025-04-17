@@ -206,7 +206,7 @@ def main():
     # Use Markdown to combine the image with the title
     st.markdown("""
         <h1 style="display: flex; align-items: center;">
-            <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="37" style="margin-right: 10px;">
+            <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="45" style="margin-right: 10px;">
             TRW - Local Business Finder
         </h1>
     """, unsafe_allow_html=True)
