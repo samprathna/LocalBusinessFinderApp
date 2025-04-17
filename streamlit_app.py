@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from geopy.distance import geodesic
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Rotate user agents
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
@@ -17,15 +18,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (iPad; CPU OS 13_2 like Mac OS X)"
 ]
 
-def find_emails_from_website(base_url):
-    if not base_url:
-        return None, None
-
-    found_emails = set()
-    facebook_url = None
-    headers = {'User-Agent': random.choice(USER_AGENTS)}
-
-    def generate_pages_to_try():
+# Generate dynamic paths
+def generate_pages_to_try():
     base_paths = [
         '', '/contact', '/contact-us', '/contacts', '/contact_us', '/contactez-nous',
         '/soumission', '/devis', '/quote', '/request-a-quote',
@@ -44,8 +38,15 @@ def find_emails_from_website(base_url):
                 all_paths.add(path.rstrip('/') + suffix)
     return sorted(all_paths)
 
-    pages_to_try = generate_pages_to_try()
+# Email & Facebook scraping
+def find_emails_from_website(base_url):
+    if not base_url:
+        return None, None
 
+    found_emails = set()
+    facebook_url = None
+    pages_to_try = generate_pages_to_try()
+    headers = {'User-Agent': random.choice(USER_AGENTS)}
     email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
 
     def scrape_page(url):
@@ -56,20 +57,20 @@ def find_emails_from_website(base_url):
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                # Extract emails from mailto links
+                # From mailto links
                 for mailto_link in soup.select('a[href^=mailto]'):
                     email = mailto_link.get('href').replace('mailto:', '').strip()
                     if email:
                         found_emails.add(email)
 
-                # Extract emails from visible text
+                # From plain text
                 text = soup.get_text()
                 emails = re.findall(email_pattern, text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         found_emails.add(email)
 
-                # Facebook link detection
+                # Detect Facebook page
                 if not facebook_url:
                     fb_link = soup.find('a', href=re.compile(r'facebook\.com'))
                     if fb_link:
@@ -89,6 +90,7 @@ def find_emails_from_website(base_url):
 
     return ', '.join(found_emails) if found_emails else None, facebook_url
 
+# Process a single business
 def process_business(place, center_latlng, gmaps):
     name = place.get('name')
     reviews = place.get('user_ratings_total', 0)
@@ -126,6 +128,7 @@ def process_business(place, center_latlng, gmaps):
         name, reviews, rating, distance_km, website, address, phone, email, facebook
     ]
 
+# Run full search
 def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=None):
     gmaps = googlemaps.Client(key=api_key)
 
@@ -157,7 +160,7 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     total = len(all_results)
     completed = 0
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=7) as executor:
         futures = [
             executor.submit(process_business, place, center_latlng, gmaps)
             for place in all_results
@@ -178,12 +181,13 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     )
     return df.reset_index(drop=True)
 
+# Streamlit UI
 def main():
-    st.title("Local Business Finder")
+    st.title("📍 Local Business Finder")
 
     radius = st.number_input("Enter the search radius (in km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Enter the business keyword (e.g., plumber, dentist):")
-    postalcode = st.text_input("Enter the postal code (e.g., H7T 2L8):")
+    postalcode = st.text_input("Enter the postal code or ZIP (e.g., H2E 2M6 or 90210):")
     api_key = st.secrets.get("google", {}).get("api_key", None)
 
     if st.button("Find Businesses"):
@@ -192,25 +196,4 @@ def main():
         else:
             try:
                 progress_bar = st.progress(0)
-                df = FindLocalBusinesses(
-                    radius, keyword, postalcode, api_key,
-                    progress_callback=lambda p: progress_bar.progress(min(p, 1.0))
-                )
-
-                if not df.empty:
-                    st.write("### Found Businesses", df)
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label="Download results as CSV",
-                        data=csv,
-                        file_name=f"businesses_{keyword}_{radius}km_{postalcode}.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.write("No businesses found.")
-
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-
-if __name__ == "__main__":
-    main()
+                df = FindLocalBusinesses
