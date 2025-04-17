@@ -15,56 +15,25 @@ def find_emails_from_website(base_url):
 
     found_emails = set()
     facebook_url = None
-    checked_urls = set()
-    request_count = 0
-    MAX_MAIN_REQUESTS = 5
-    FACEBOOK_REQUESTS = 1
 
-    # Standard pages to try first
-    pages_to_try = pages_to_try = [
-    '',
-
-    # Contact variations
-    '/contact', '/contact-us', '/contacts', '/nous-joindre', '/joindre',  'nous_joindre'
-    '/contact_us', '/contactez-nous', '/contactez_nous',
-    '/soumission', '/quote', '/request-a-quote', '/demande',
-    
-    # /pages variations
-    '/pages/contact',
-    '/pages/contacts',
-    '/pages/contact-us',
-    '/pages/nous-joindre',
-    '/pages/about',
-    '/pages/about-us',
-    '/pages/a-propos',
-
-    # About variations
-    '/about', '/about-us', '/about_us', '/a-propos', '/a_propos', '/apropos', '/qui-sommes-nous',
-
-    # Support or info
-    '/support', '/help', '/aide', '/faq', '/info', '/information',
-
-    # PHP versions
-    '/contact.php', '/contact-us.php', '/contacts.php', '/nous-joindre.php', '/soumission.php',
-    '/about.php', '/about-us.php', '/a-propos.php', '/apropos.php',
-
-    # HTML versions
-    '/contact.html', '/contact-us.html', '/contacts.html', '/nous-joindre.html', '/soumission.html',
-    '/about.html', '/about-us.html', '/a-propos.html', '/apropos.html',
-    '/support.html', '/help.html', '/faq.html', '/info.html', '/services.html',
-    '/reservation.html', '/booking.html'
-]
+    pages_to_try = [
+        '',
+        '/contact', '/contact-us', '/contacts', '/contact_us', '/nous-joindre', '/joindre',
+        '/soumission', '/devis', '/quote', '/request-a-quote',
+        '/formulaire-contact', '/formulaire', '/demande',
+        '/about', '/about-us', '/about_us', '/a-propos', '/apropos', '/qui-sommes-nous',
+        '/support', '/help', '/aide', '/faq', '/info', '/information',
+        '/customer-service', '/service-client', '/services',
+        '/reservation', '/booking', '/book', '/rdv', '/appointment',
+        '/pages/contact', '/pages/contact-us', '/pages/contacts', '/pages/contact_us', '/pages/nous-joindre', '/pages/joindre',
+        '/pages/about', '/pages/about-us', '/pages/faq', '/pages/support'
+    ]
 
     def scrape_page(url):
-        nonlocal request_count, facebook_url
-        if request_count >= MAX_MAIN_REQUESTS or url in checked_urls:
-            return
-        checked_urls.add(url)
-
+        nonlocal facebook_url
         try:
             response = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            request_count += 1
-            time.sleep(1)  # delay between requests
+            time.sleep(1)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 text = soup.get_text()
@@ -72,8 +41,6 @@ def find_emails_from_website(base_url):
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         found_emails.add(email)
-
-                # Find Facebook link
                 if not facebook_url:
                     fb_link = soup.find('a', href=re.compile(r'facebook\.com'))
                     if fb_link:
@@ -85,49 +52,9 @@ def find_emails_from_website(base_url):
         except:
             pass
 
-    # 1. Scrape up to 5 from the main site
     for path in pages_to_try:
-        if request_count >= MAX_MAIN_REQUESTS:
-            break
         full_url = base_url.rstrip('/') + path
         scrape_page(full_url)
-
-    # 2. Collect shallow internal links from homepage (only if space left)
-    if request_count < MAX_MAIN_REQUESTS:
-        try:
-            response = requests.get(base_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            time.sleep(1)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                internal_links = [
-                    a['href'] for a in soup.find_all('a', href=True)
-                    if (
-                        (a['href'].startswith('/') or base_url in a['href']) and
-                        a['href'].count('/') <= 2
-                    )
-                ]
-                for link in internal_links:
-                    if request_count >= MAX_MAIN_REQUESTS:
-                        break
-                    if link.startswith('/'):
-                        link = base_url.rstrip('/') + link
-                    scrape_page(link)
-        except:
-            pass
-
-    # 3. If still no email, try Facebook
-    if not found_emails and facebook_url:
-        try:
-            response = requests.get(facebook_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-            time.sleep(1)
-            if response.status_code == 200:
-                text = response.text
-                emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
-                for email in emails:
-                    if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        found_emails.add(email)
-        except:
-            pass
 
     return ', '.join(found_emails) if found_emails else None, facebook_url
 
@@ -217,7 +144,7 @@ def main():
 
     radius = st.number_input("Enter the search radius (in km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Enter the business keyword (e.g., plumber, dentist):")
-    postalcode = st.text_input("Enter the postal code (e.g., H2E 2M6):")
+    postalcode = st.text_input("Enter the postal code (e.g., H7T 2L8):")
 
     api_key = st.secrets.get("google", {}).get("api_key", None)
 
