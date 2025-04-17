@@ -174,7 +174,7 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     total = len(all_results)
     completed = 0
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=7) as executor:
         futures = [
             executor.submit(process_business, place, center_latlng, gmaps)
             for place in all_results
