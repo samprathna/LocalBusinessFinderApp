@@ -21,7 +21,33 @@ def find_emails_from_website(base_url):
     FACEBOOK_REQUESTS = 1
 
     # Standard pages to try first
-    pages_to_try = ['', '/contact', '/about', '/a-propos', '/contacts', 'about_us', 'about-us', 'contact-us']
+    pages_to_try = pages_to_try = [
+    '',
+
+    # Contact variations
+    '/contact', '/contact-us', '/contacts', '/nous-joindre', '/joindre',  'nous_joindre'
+    '/contact_us', '/contactez-nous', '/contactez_nous',
+    '/soumission', '/quote', '/request-a-quote', '/demande',
+
+    # About variations
+    '/about', '/about-us', '/about_us', '/a-propos', '/a_propos', '/apropos', '/qui-sommes-nous',
+
+    # Support or info
+    '/support', '/help', '/aide', '/faq', '/info', '/information',
+    '/customer-service', '/service-client', '/services',
+
+    # PHP versions
+    '/contact.php', '/contact-us.php', '/contacts.php', '/nous-joindre.php', '/soumission.php',
+    '/about.php', '/about-us.php', '/a-propos.php', '/apropos.php',
+    '/support.php', '/help.php', '/faq.php', '/info.php', '/services.php',
+    '/reservation.php', '/booking.php',
+
+    # HTML versions
+    '/contact.html', '/contact-us.html', '/contacts.html', '/nous-joindre.html', '/soumission.html',
+    '/about.html', '/about-us.html', '/a-propos.html', '/apropos.html',
+    '/support.html', '/help.html', '/faq.html', '/info.html', '/services.html',
+    '/reservation.html', '/booking.html'
+]
 
     def scrape_page(url):
         nonlocal request_count, facebook_url
