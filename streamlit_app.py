@@ -9,15 +9,21 @@ from bs4 import BeautifulSoup
 from geopy.distance import geodesic
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ----------------------------
-# Email extraction function
-# ----------------------------
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    "Mozilla/5.0 (X11; Linux x86_64)",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)",
+    "Mozilla/5.0 (iPad; CPU OS 13_2 like Mac OS X)"
+]
+
 def find_emails_from_website(base_url):
     if not base_url:
         return None, None
 
     found_emails = set()
     facebook_url = None
+    headers = {'User-Agent': random.choice(USER_AGENTS)}
 
     pages_to_try = [
         '',
@@ -29,7 +35,7 @@ def find_emails_from_website(base_url):
         '/pages/contact', '/pages/about', '/pages/support', '/pages/faq'
     ]
 
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
 
     def scrape_page(url):
         nonlocal facebook_url
@@ -38,12 +44,21 @@ def find_emails_from_website(base_url):
             time.sleep(random.uniform(0.6, 1.4))
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
+
+                # Extract emails from mailto links
+                for mailto_link in soup.select('a[href^=mailto]'):
+                    email = mailto_link.get('href').replace('mailto:', '').strip()
+                    if email:
+                        found_emails.add(email)
+
+                # Extract emails from visible text
                 text = soup.get_text()
-                emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+                emails = re.findall(email_pattern, text)
                 for email in emails:
                     if not email.lower().endswith(('.png', '.jpg', '.jpeg')):
                         found_emails.add(email)
 
+                # Facebook link detection
                 if not facebook_url:
                     fb_link = soup.find('a', href=re.compile(r'facebook\.com'))
                     if fb_link:
@@ -59,13 +74,10 @@ def find_emails_from_website(base_url):
         full_url = base_url.rstrip('/') + path
         scrape_page(full_url)
         if found_emails:
-            break  # ✅ Early stop once an email is found
+            break
 
     return ', '.join(found_emails) if found_emails else None, facebook_url
 
-# ----------------------------
-# Scrape data for one business
-# ----------------------------
 def process_business(place, center_latlng, gmaps):
     name = place.get('name')
     reviews = place.get('user_ratings_total', 0)
@@ -103,9 +115,6 @@ def process_business(place, center_latlng, gmaps):
         name, reviews, rating, distance_km, website, address, phone, email, facebook
     ]
 
-# ----------------------------
-# Business Search Function
-# ----------------------------
 def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=None):
     gmaps = googlemaps.Client(key=api_key)
 
@@ -158,9 +167,6 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
     )
     return df.reset_index(drop=True)
 
-# ----------------------------
-# Streamlit App Interface
-# ----------------------------
 def main():
     st.title("Local Business Finder")
 
@@ -195,8 +201,5 @@ def main():
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
-# ----------------------------
-# Run App
-# ----------------------------
 if __name__ == "__main__":
     main()
