@@ -201,12 +201,12 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
 def main():
     
     # Set page title
-    st.set_page_config(page_title="TRW - Local Business Finder", page_icon=":house:")
+    st.set_page_config(page_title="TRW - Local Business Finder", page_icon="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg")
     
     # Use Markdown to combine the image with the title
     st.markdown("""
         <h1 style="display: flex; align-items: center;">
-            <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="30" style="margin-right: 10px;">
+            <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="37" style="margin-right: 10px;">
             TRW - Local Business Finder
         </h1>
     """, unsafe_allow_html=True)
