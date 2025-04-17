@@ -229,7 +229,8 @@ def main():
 
                 if not df.empty:
                     st.success("✅ Businesses found!")
-                    st.write("### Results", df)
+                    st.write("### Results")
+                    st.dataframe(df, use_container_width=True)
                     csv = df.to_csv(index=False)
                     st.download_button(
                         label="Download CSV",
