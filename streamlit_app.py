@@ -28,19 +28,24 @@ def find_emails_from_website(base_url):
     '/contact', '/contact-us', '/contacts', '/nous-joindre', '/joindre',  'nous_joindre'
     '/contact_us', '/contactez-nous', '/contactez_nous',
     '/soumission', '/quote', '/request-a-quote', '/demande',
+    
+    # /pages variations
+    
+    '/pages/contact-us',
+    '/pages/nous-joindre',
+    '/pages/about',
+    '/pages/about-us',
+    '/pages/a-propos',
 
     # About variations
     '/about', '/about-us', '/about_us', '/a-propos', '/a_propos', '/apropos', '/qui-sommes-nous',
 
     # Support or info
     '/support', '/help', '/aide', '/faq', '/info', '/information',
-    '/customer-service', '/service-client', '/services',
 
     # PHP versions
     '/contact.php', '/contact-us.php', '/contacts.php', '/nous-joindre.php', '/soumission.php',
     '/about.php', '/about-us.php', '/a-propos.php', '/apropos.php',
-    '/support.php', '/help.php', '/faq.php', '/info.php', '/services.php',
-    '/reservation.php', '/booking.php',
 
     # HTML versions
     '/contact.html', '/contact-us.html', '/contacts.html', '/nous-joindre.html', '/soumission.html',
