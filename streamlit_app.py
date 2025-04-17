@@ -144,11 +144,76 @@ def FindLocalBusinesses(radius, keyword, postalcode, api_key, progress_callback=
 
 def main():
     st.set_page_config(
-    page_title="TRW - Local Business Finder",
-    page_icon="favicon.jpg",
-    layout="wide"  # ✅ This enables full width layout
+        page_title="TRW - Local Business Finder",
+        page_icon="favicon.jpg",
+        layout="wide"  # ✅ This enables full width layout
     )
+    st.markdown("""
+        <style>
+        /* MATRIX BACKGROUND */
+        body {
+            background-color: black !important;
+            color: #00ff00 !important;
+        }
+        #MainMenu, header, footer {visibility: hidden;}
     
+        .matrix-bg {
+            z-index: -1;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            overflow: hidden;
+        }
+    
+        canvas#matrixCanvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        </style>
+    
+        <div class="matrix-bg">
+            <canvas id="matrixCanvas"></canvas>
+        </div>
+    
+        <script>
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+    
+        canvas.height = window.innerHeight;
+        canvas.width = window.innerWidth;
+    
+        const letters = "アァイィウヴエカキクケコサシスセソタチツテトナニヌネノ0123456789";
+        const fontSize = 14;
+        const columns = canvas.width / fontSize;
+        const drops = Array(Math.floor(columns)).fill(1);
+    
+        function draw() {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+            ctx.fillStyle = "#0F0";
+            ctx.font = fontSize + "px monospace";
+    
+            for(let i = 0; i < drops.length; i++) {
+                const text = letters[Math.floor(Math.random() * letters.length)];
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+    
+                if(drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+    
+        setInterval(draw, 33);
+        </script>
+    """, unsafe_allow_html=True
+    )
     st.markdown("""
         <h1 style="display: flex; align-items: center;">
             <img src="https://github.com/samprathna/LocalBusinessFinderApp/blob/main/favicon.jpg?raw=true" width="45" style="margin-right: 10px;">
