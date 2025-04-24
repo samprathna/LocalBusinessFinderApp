@@ -200,8 +200,6 @@ def main():
     if st.button("🧠 Escape the Matrix" if st.session_state.matrix_mode else "🔌 Enter the Matrix"):
         st.session_state.matrix_mode = not st.session_state.matrix_mode
 
-
-
     if st.session_state.matrix_mode:
         components.html("""
             <style>
@@ -223,12 +221,12 @@ def main():
                 const ctx = canvas.getContext("2d");
                 canvas.height = window.innerHeight;
                 canvas.width = window.innerWidth;
-    
+
                 const letters = "アァイィウエオカキクケコサシスセソ0123456789";
                 const fontSize = 14;
                 const columns = canvas.width / fontSize;
                 const drops = Array(Math.floor(columns)).fill(1);
-    
+
                 function draw() {
                     ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -257,11 +255,16 @@ def main():
     radius = st.number_input("Search radius (km):", min_value=1, max_value=100, value=10)
     keyword = st.text_input("Business keyword (e.g., plumber, dentist):")
     postalcode = st.text_input("Postal/ZIP code (e.g., H2E 2M6 or 90210):")
-    api_key = st.secrets.get("google", {}).get("api_key", None)
+
+    use_custom_key = st.checkbox("🔑 Use your own Google Maps API key")
+    if use_custom_key:
+        api_key = st.text_input("Enter your Google Maps API key:", type="password")
+    else:
+        api_key = st.secrets.get("google", {}).get("api_key", None)
 
     if st.button("Find Businesses"):
         if not keyword or not postalcode or not api_key:
-            st.error("Please fill out all fields and ensure your API key is set in Streamlit secrets.")
+            st.error("Please fill out all fields and ensure your API key is set.")
         else:
             try:
                 progress_bar = st.progress(0)
@@ -285,6 +288,7 @@ def main():
                     st.warning("No businesses found.")
             except Exception as e:
                 st.error(f"Error: {str(e)}")
+
 
 # ----------------------------
 # Run app
