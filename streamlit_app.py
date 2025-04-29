@@ -256,7 +256,7 @@ def main():
     keyword = st.text_input("Business keyword (e.g., plumber, dentist):")
     postalcode = st.text_input("Postal/ZIP code (e.g., H2E 2M6 or 90210):")
 
-    use_custom_key = st.checkbox("🔑 Use your own Google Maps API key")
+    use_custom_key = st.checkbox("🔑 Use your own Google Maps API key (Faster search, doesn't use OJLotsOfPulp's API Key and ressources)")
     if use_custom_key:
         api_key = st.text_input("Enter your Google Maps API key:", type="password")
     else:
